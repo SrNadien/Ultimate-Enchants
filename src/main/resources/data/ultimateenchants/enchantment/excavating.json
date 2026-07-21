@@ -1,0 +1,11 @@
+{
+  "description": {"translate": "enchantment.ultimateenchants.excavating"},
+  "supported_items": "#minecraft:enchantable/mining",
+  "weight": 3,
+  "max_level": 3,
+  "min_cost": {"base": 15, "per_level_above_first": 9},
+  "max_cost": {"base": 45, "per_level_above_first": 9},
+  "anvil_cost": 4,
+  "slots": ["mainhand"],
+  "effects": {}
+}

@@ -1,0 +1,69 @@
+package nadiendev.ultimateenchants.util;
+
+import net.minecraft.core.Holder;
+import net.minecraft.core.HolderLookup;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.enchantment.Enchantment;
+import net.minecraft.world.item.enchantment.EnchantmentHelper;
+import nadiendev.ultimateenchants.UltimateEnchants;
+
+import java.util.Optional;
+
+/**
+ * Helper to fetch enchantment levels on an ItemStack given only an Entity for registry access.
+ * Centralizes all UltimateEnchants enchantment ResourceKeys.
+ */
+public final class EnchantUtil {
+
+    private EnchantUtil() {}
+
+    public static ResourceKey<Enchantment> key(String path) {
+        return ResourceKey.create(Registries.ENCHANTMENT, ResourceLocation.fromNamespaceAndPath(UltimateEnchants.MOD_ID, path));
+    }
+
+    public static final ResourceKey<Enchantment> SOULBOUND = key("soulbound");
+    public static final ResourceKey<Enchantment> MAGIC_PROTECTION = key("magic_protection");
+    public static final ResourceKey<Enchantment> DISPLACEMENT = key("displacement");
+    public static final ResourceKey<Enchantment> FLAMING_REBUKE = key("flaming_rebuke");
+    public static final ResourceKey<Enchantment> CHILLING_REBUKE = key("chilling_rebuke");
+    public static final ResourceKey<Enchantment> REACH = key("reach");
+    public static final ResourceKey<Enchantment> VITALITY = key("vitality");
+    public static final ResourceKey<Enchantment> AIR_AFFINITY = key("air_affinity");
+    public static final ResourceKey<Enchantment> GOURMAND = key("gourmand");
+    public static final ResourceKey<Enchantment> INSIGHT = key("insight");
+    public static final ResourceKey<Enchantment> CAVALIER = key("cavalier");
+    public static final ResourceKey<Enchantment> ENDER_DISRUPTION = key("ender_disruption");
+    public static final ResourceKey<Enchantment> FROST_ASPECT = key("frost_aspect");
+    public static final ResourceKey<Enchantment> LEECH = key("leech");
+    public static final ResourceKey<Enchantment> INSTIGATING = key("instigating");
+    public static final ResourceKey<Enchantment> MAGIC_EDGE = key("magic_edge");
+    public static final ResourceKey<Enchantment> OUTLAW = key("outlaw");
+    public static final ResourceKey<Enchantment> VIGILANTE = key("vigilante");
+    public static final ResourceKey<Enchantment> VORPAL = key("vorpal");
+    public static final ResourceKey<Enchantment> EXCAVATING = key("excavating");
+    public static final ResourceKey<Enchantment> HUNTERS_BOUNTY = key("hunters_bounty");
+    public static final ResourceKey<Enchantment> QUICK_DRAW = key("quick_draw");
+    public static final ResourceKey<Enchantment> TRUESHOT = key("trueshot");
+    public static final ResourceKey<Enchantment> VOLLEY = key("volley");
+    public static final ResourceKey<Enchantment> ANGLERS_BOUNTY = key("anglers_bounty");
+    public static final ResourceKey<Enchantment> PILFERING = key("pilfering");
+    public static final ResourceKey<Enchantment> BULWARK = key("bulwark");
+    public static final ResourceKey<Enchantment> PHALANX = key("phalanx");
+    public static final ResourceKey<Enchantment> CURSE_OF_FOOLISHNESS = key("curse_of_foolishness");
+    public static final ResourceKey<Enchantment> CURSE_OF_MERCY = key("curse_of_mercy");
+
+    public static int level(Entity entity, ItemStack stack, ResourceKey<Enchantment> enchant) {
+        if (stack.isEmpty() || entity == null || entity.level() == null) return 0;
+        HolderLookup.RegistryLookup<Enchantment> lookup = entity.level().registryAccess().lookupOrThrow(Registries.ENCHANTMENT);
+        Optional<Holder.Reference<Enchantment>> holder = lookup.get(enchant);
+        return holder.map(h -> EnchantmentHelper.getItemEnchantmentLevel(h, stack)).orElse(0);
+    }
+
+    public static boolean has(Entity entity, ItemStack stack, ResourceKey<Enchantment> enchant) {
+        return level(entity, stack, enchant) > 0;
+    }
+}

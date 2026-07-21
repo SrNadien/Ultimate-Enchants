@@ -1,0 +1,12 @@
+{
+  "description": {"translate": "enchantment.ultimateenchants.vigilante"},
+  "supported_items": "#minecraft:enchantable/weapon",
+  "exclusive_set": "#ultimateenchants:exclusive_set/mob_damage",
+  "weight": 3,
+  "max_level": 4,
+  "min_cost": {"base": 8, "per_level_above_first": 8},
+  "max_cost": {"base": 40, "per_level_above_first": 8},
+  "anvil_cost": 2,
+  "slots": ["mainhand"],
+  "effects": {}
+}
