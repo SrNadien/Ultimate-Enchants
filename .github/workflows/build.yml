@@ -3,7 +3,7 @@ name: Build and Release
 on:
   push:
     branches:
-      - "Neo/26.1.2"
+      - "Neo/1.21.1"
 
 jobs:
   build:
@@ -18,10 +18,10 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Set up JDK 25
+      - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
-          java-version: "25"
+          java-version: "21"
           distribution: "temurin"
 
       - name: Read Version
