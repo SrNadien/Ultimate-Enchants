@@ -2,9 +2,13 @@ package nadiendev.ultimateenchants.event;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.util.ProblemReporter;
+import net.minecraft.world.level.storage.TagValueInput;
+import net.minecraft.world.level.storage.TagValueOutput;
+import net.minecraft.world.level.storage.ValueInput;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.effect.MobEffectInstance;
@@ -16,12 +20,12 @@ import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.attributes.Attribute;
 import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
-import net.minecraft.world.entity.animal.horse.AbstractHorse;
+import net.minecraft.world.entity.animal.equine.AbstractHorse;
 import net.minecraft.world.entity.animal.Animal;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.monster.EnderMan;
 import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.entity.projectile.AbstractArrow;
+import net.minecraft.world.entity.projectile.arrow.AbstractArrow;
 import net.minecraft.world.food.FoodProperties;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -44,7 +48,7 @@ import net.neoforged.neoforge.event.entity.player.ArrowLooseEvent;
 import net.neoforged.neoforge.event.entity.player.ItemFishedEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerXpEvent;
-import net.neoforged.neoforge.event.level.BlockEvent;
+import net.neoforged.neoforge.event.level.block.BreakBlockEvent;
 import net.neoforged.neoforge.event.tick.PlayerTickEvent;
 
 import nadiendev.ultimateenchants.UltimateEnchants;
@@ -57,16 +61,17 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+
 public class EnchantmentEventHandler {
 
     private static final Map<UUID, List<ItemStack>> SOULBOUND_STORAGE = new HashMap<>();
     private static final Map<UUID, Long> ENDER_DISRUPTION_LOCK = new HashMap<>();
 
-    private static final ResourceLocation REACH_BLOCK_ID = ResourceLocation.fromNamespaceAndPath(UltimateEnchants.MOD_ID, "reach_block");
-    private static final ResourceLocation REACH_ENTITY_ID = ResourceLocation.fromNamespaceAndPath(UltimateEnchants.MOD_ID, "reach_entity");
-    private static final ResourceLocation VITALITY_HEALTH_ID = ResourceLocation.fromNamespaceAndPath(UltimateEnchants.MOD_ID, "vitality_health");
-    private static final ResourceLocation BULWARK_KB_ID = ResourceLocation.fromNamespaceAndPath(UltimateEnchants.MOD_ID, "bulwark_knockback");
-    private static final ResourceLocation PHALANX_SPEED_ID = ResourceLocation.fromNamespaceAndPath(UltimateEnchants.MOD_ID, "phalanx_speed");
+    private static final Identifier REACH_BLOCK_ID = Identifier.fromNamespaceAndPath(UltimateEnchants.MOD_ID, "reach_block");
+    private static final Identifier REACH_ENTITY_ID = Identifier.fromNamespaceAndPath(UltimateEnchants.MOD_ID, "reach_entity");
+    private static final Identifier VITALITY_HEALTH_ID = Identifier.fromNamespaceAndPath(UltimateEnchants.MOD_ID, "vitality_health");
+    private static final Identifier BULWARK_KB_ID = Identifier.fromNamespaceAndPath(UltimateEnchants.MOD_ID, "bulwark_knockback");
+    private static final Identifier PHALANX_SPEED_ID = Identifier.fromNamespaceAndPath(UltimateEnchants.MOD_ID, "phalanx_speed");
 
     // ---------------------------------------------------------------
     // Soulbound
@@ -74,7 +79,7 @@ public class EnchantmentEventHandler {
     @SubscribeEvent
     public void onDrops(LivingDropsEvent event) {
         if (!(event.getEntity() instanceof Player player)) return;
-        if (player.level().isClientSide) return;
+        if (player.level().isClientSide()) return;
 
         List<ItemStack> kept = new ArrayList<>();
         event.getDrops().removeIf(itemEntity -> {
@@ -113,7 +118,7 @@ public class EnchantmentEventHandler {
     @SubscribeEvent
     public void onIncomingDamage(LivingIncomingDamageEvent event) {
         LivingEntity victim = event.getEntity();
-        if (victim.level().isClientSide) return;
+        if (victim.level().isClientSide()) return;
 
         Entity attackerEntity = event.getSource().getEntity();
         if (!(attackerEntity instanceof LivingEntity attacker)) return;
@@ -146,25 +151,25 @@ public class EnchantmentEventHandler {
         }
 
         int outlaw = EnchantUtil.level(attacker, weapon, EnchantUtil.OUTLAW);
-        if (outlaw > 0 && (victim.getType().is(net.minecraft.tags.EntityTypeTags.RAIDERS) == false)
-                && (victim instanceof net.minecraft.world.entity.npc.Villager || victim instanceof net.minecraft.world.entity.animal.IronGolem)) {
+        if (outlaw > 0 && (victim.getType().builtInRegistryHolder().is(net.minecraft.tags.EntityTypeTags.RAIDERS) == false)
+                && (victim instanceof net.minecraft.world.entity.npc.villager.Villager || victim instanceof net.minecraft.world.entity.animal.golem.IronGolem)) {
             bonus += amount * 0.2f * outlaw;
         }
 
         int vigilante = EnchantUtil.level(attacker, weapon, EnchantUtil.VIGILANTE);
-        if (vigilante > 0 && (victim.getType().is(net.minecraft.tags.EntityTypeTags.RAIDERS)
+        if (vigilante > 0 && (victim.getType().builtInRegistryHolder().is(net.minecraft.tags.EntityTypeTags.RAIDERS)
                 || victim instanceof net.minecraft.world.entity.monster.Ravager)) {
             bonus += amount * 0.2f * vigilante;
         }
 
         int frostAspect = EnchantUtil.level(attacker, weapon, EnchantUtil.FROST_ASPECT);
         if (frostAspect > 0) {
-            victim.addEffect(new MobEffectInstance(MobEffects.MOVEMENT_SLOWDOWN, 60 + frostAspect * 20, Math.min(frostAspect, 2)));
+            victim.addEffect(new MobEffectInstance(MobEffects.SLOWNESS, 60 + frostAspect * 20, Math.min(frostAspect, 2)));
             victim.addEffect(new MobEffectInstance(MobEffects.WEAKNESS, 60 + frostAspect * 20, 0));
         }
 
         int vorpal = EnchantUtil.level(attacker, weapon, EnchantUtil.VORPAL);
-        if (vorpal > 0 && victim.level().random.nextFloat() < 0.08f) {
+        if (vorpal > 0 && victim.level().getRandom().nextFloat() < 0.08f) {
             bonus += Math.max(amount * 3f, victim.getMaxHealth());
             if (attacker.level() instanceof ServerLevel serverLevel) {
                 serverLevel.playSound(null, victim.blockPosition(), SoundEvents.PLAYER_ATTACK_CRIT, SoundSource.PLAYERS, 1.0f, 0.6f);
@@ -182,7 +187,7 @@ public class EnchantmentEventHandler {
     @SubscribeEvent
     public void onDamagePost(LivingDamageEvent.Post event) {
         LivingEntity victim = event.getEntity();
-        if (victim.level().isClientSide) return;
+        if (victim.level().isClientSide()) return;
 
         Entity attackerEntity = event.getSource().getEntity();
 
@@ -191,9 +196,9 @@ public class EnchantmentEventHandler {
             ItemStack chest = victim.getItemBySlot(EquipmentSlot.CHEST);
             if (!chest.isEmpty()) {
                 int displacement = EnchantUtil.level(victim, chest, EnchantUtil.DISPLACEMENT);
-                if (displacement > 0 && victim.level().random.nextFloat() < 0.15f * displacement) {
-                    double angle = victim.level().random.nextDouble() * Math.PI * 2;
-                    double dist = 4 + victim.level().random.nextDouble() * 3;
+                if (displacement > 0 && victim.level().getRandom().nextFloat() < 0.15f * displacement) {
+                    double angle = victim.level().getRandom().nextDouble() * Math.PI * 2;
+                    double dist = 4 + victim.level().getRandom().nextDouble() * 3;
                     double nx = attacker.getX() + Math.cos(angle) * dist;
                     double nz = attacker.getZ() + Math.sin(angle) * dist;
                     attacker.teleportTo(nx, attacker.getY(), nz);
@@ -207,7 +212,7 @@ public class EnchantmentEventHandler {
 
                 int chilling = EnchantUtil.level(victim, chest, EnchantUtil.CHILLING_REBUKE);
                 if (chilling > 0) {
-                    attacker.addEffect(new MobEffectInstance(MobEffects.MOVEMENT_SLOWDOWN, 60, Math.min(chilling, 2)));
+                    attacker.addEffect(new MobEffectInstance(MobEffects.SLOWNESS, 60, Math.min(chilling, 2)));
                     attacker.addEffect(new MobEffectInstance(MobEffects.WEAKNESS, 60, Math.min(chilling - 1, 1)));
                     attacker.knockback(0.6, victim.getX() - attacker.getX(), victim.getZ() - attacker.getZ());
                 }
@@ -217,7 +222,7 @@ public class EnchantmentEventHandler {
             ItemStack weapon = attacker.getMainHandItem();
             int leech = EnchantUtil.level(attacker, weapon, EnchantUtil.LEECH);
             if (leech > 0) {
-                float heal = event.getNewDamage() * 0.07f * leech;
+                float heal = event.getInflictedDamage() * 0.07f * leech;
                 if (heal > 0) {
                     attacker.heal(heal);
                 }
@@ -262,10 +267,10 @@ public class EnchantmentEventHandler {
     @SubscribeEvent
     public void onFinishUsingItem(LivingEntityUseItemEvent.Finish event) {
         if (!(event.getEntity() instanceof Player player)) return;
-        if (player.level().isClientSide) return;
+        if (player.level().isClientSide()) return;
 
         ItemStack item = event.getItem();
-        FoodProperties food = item.getFoodProperties(player);
+        FoodProperties food = item.get(net.minecraft.core.component.DataComponents.FOOD);
         if (food == null) return;
 
         ItemStack helmet = player.getItemBySlot(EquipmentSlot.HEAD);
@@ -341,7 +346,7 @@ public class EnchantmentEventHandler {
     @SubscribeEvent
     public void onPlayerTick(PlayerTickEvent.Post event) {
         Player player = event.getEntity();
-        if (player.level().isClientSide) return;
+        if (player.level().isClientSide()) return;
 
         ItemStack main = player.getMainHandItem();
         ItemStack off = player.getOffhandItem();
@@ -354,7 +359,7 @@ public class EnchantmentEventHandler {
         // por encima de ese tope (así lo hace vanilla), así que replicamos eso:
         // Phalanx nivel N = Speed N (Phalanx III = Speed III).
         if (phalanx > 0 && player.isBlocking()) {
-            player.addEffect(new MobEffectInstance(MobEffects.MOVEMENT_SPEED, 10, phalanx - 1, true, false, false));
+            player.addEffect(new MobEffectInstance(MobEffects.SPEED, 10, phalanx - 1, true, false, false));
         }
 
         // Frost Walker override: lava freezing (players)
@@ -374,7 +379,7 @@ public class EnchantmentEventHandler {
     public void onLivingTickForHorses(net.neoforged.neoforge.event.tick.EntityTickEvent.Post event) {
         if (!ServerConfig.FROST_WALKER_OVERRIDE.get()) return;
         if (!(event.getEntity() instanceof AbstractHorse horse)) return;
-        if (horse.level().isClientSide) return;
+        if (horse.level().isClientSide()) return;
 
         ItemStack bodyArmor = horse.getBodyArmorItem();
         int level = frostWalkerLevel(horse, bodyArmor);
@@ -429,7 +434,7 @@ public class EnchantmentEventHandler {
     @SubscribeEvent
     public void onItemFished(ItemFishedEvent event) {
         if (!(event.getEntity() instanceof Player player)) return;
-        if (player.level().isClientSide) return;
+        if (player.level().isClientSide()) return;
 
         ItemStack rod = player.getMainHandItem();
         if (!rod.is(Items.FISHING_ROD)) {
@@ -437,7 +442,7 @@ public class EnchantmentEventHandler {
         }
 
         int anglersBounty = EnchantUtil.level(player, rod, EnchantUtil.ANGLERS_BOUNTY);
-        if (anglersBounty > 0 && player.level().random.nextFloat() < 0.1f * anglersBounty) {
+        if (anglersBounty > 0 && player.level().getRandom().nextFloat() < 0.1f * anglersBounty) {
             List<ItemStack> drops = event.getDrops();
             if (!drops.isEmpty()) {
                 drops.add(drops.get(0).copy());
@@ -449,7 +454,7 @@ public class EnchantmentEventHandler {
             EquipmentSlot[] armorSlots = {EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET};
             for (EquipmentSlot slot : armorSlots) {
                 ItemStack armor = hooked.getItemBySlot(slot);
-                if (!armor.isEmpty() && player.level().random.nextFloat() < 0.3f) {
+                if (!armor.isEmpty() && player.level().getRandom().nextFloat() < 0.3f) {
                     hooked.setItemSlot(slot, ItemStack.EMPTY);
                     if (!player.getInventory().add(armor)) {
                         player.drop(armor, false);
@@ -466,7 +471,7 @@ public class EnchantmentEventHandler {
     @SubscribeEvent
     public void onDamagePre(LivingDamageEvent.Pre event) {
         LivingEntity victim = event.getEntity();
-        if (victim.level().isClientSide) return;
+        if (victim.level().isClientSide()) return;
 
         Entity attackerEntity = event.getSource().getEntity();
         if (!(attackerEntity instanceof LivingEntity attacker)) return;
@@ -485,9 +490,9 @@ public class EnchantmentEventHandler {
     // Excavating: break extra blocks of the same type around the mined one
     // ---------------------------------------------------------------
     @SubscribeEvent
-    public void onBlockBreak(BlockEvent.BreakEvent event) {
+    public void onBlockBreak(BreakBlockEvent event) {
         Player player = event.getPlayer();
-        if (player == null || player.level().isClientSide || player.isCreative()) return;
+        if (player == null || player.level().isClientSide() || player.isCreative()) return;
 
         ItemStack tool = player.getMainHandItem();
         int excavating = EnchantUtil.level(player, tool, EnchantUtil.EXCAVATING);
@@ -513,7 +518,7 @@ public class EnchantmentEventHandler {
     @SubscribeEvent
     public void onHuntersBounty(LivingDropsEvent event) {
         if (!(event.getEntity() instanceof Animal animal)) return;
-        if (animal.level().isClientSide) return;
+        if (animal.level().isClientSide()) return;
 
         Entity shooterEntity = event.getSource().getEntity();
         if (!(shooterEntity instanceof Player shooter)) return;
@@ -522,7 +527,7 @@ public class EnchantmentEventHandler {
         int level = EnchantUtil.level(shooter, weapon, EnchantUtil.HUNTERS_BOUNTY);
         if (level <= 0) return;
 
-        if (animal.level().random.nextFloat() < 0.15f * level && !event.getDrops().isEmpty()) {
+        if (animal.level().getRandom().nextFloat() < 0.15f * level && !event.getDrops().isEmpty()) {
             ItemEntity original = event.getDrops().iterator().next();
             ItemEntity extra = new ItemEntity(animal.level(), original.getX(), original.getY(), original.getZ(), original.getItem().copy());
             event.getDrops().add(extra);
@@ -564,7 +569,7 @@ public class EnchantmentEventHandler {
         if (spawningVolleyArrow) return;
         if (!(event.getEntity() instanceof AbstractArrow arrow)) return;
         if (!(arrow.getOwner() instanceof Player shooter)) return;
-        if (event.getLevel().isClientSide) return;
+        if (event.getLevel().isClientSide()) return;
 
         ItemStack bow = shooter.getMainHandItem();
         if (!(bow.getItem() instanceof net.minecraft.world.item.BowItem)) {
@@ -584,11 +589,25 @@ public class EnchantmentEventHandler {
             try {
                 for (int i = 1; i <= volley; i++) {
                     double spreadDeg = 3.0 * i;
-                    AbstractArrow clone = (AbstractArrow) arrow.getType().create(serverLevel);
+                    AbstractArrow clone = (AbstractArrow) arrow.getType().create(serverLevel, net.minecraft.world.entity.EntitySpawnReason.TRIGGERED);
                     if (clone == null) continue;
-                    clone.moveTo(arrow.getX(), arrow.getY(), arrow.getZ(), arrow.getYRot(), arrow.getXRot());
+                    // A partir de NeoForge 26.1, Entity#saveWithoutId y Entity#load
+                    // operan sobre ValueOutput/ValueInput en lugar de CompoundTag directo.
+                    TagValueOutput arrowOutput = TagValueOutput.createWithContext(
+                            ProblemReporter.DISCARDING,
+                            serverLevel.registryAccess()
+                    );
+                    arrow.saveWithoutId(arrowOutput);
+                    net.minecraft.nbt.CompoundTag arrowData = arrowOutput.buildResult();
+
+                    ValueInput arrowInput = TagValueInput.create(
+                            ProblemReporter.DISCARDING,
+                            serverLevel.registryAccess(),
+                            arrowData
+                    );
+                    clone.load(arrowInput);
+                    clone.snapTo(arrow.getX(), arrow.getY(), arrow.getZ(), arrow.getYRot(), arrow.getXRot());
                     clone.setOwner(shooter);
-                    clone.setBaseDamage(arrow.getBaseDamage());
                     Vec3 baseMotion = arrow.getDeltaMovement();
                     Vec3 offsetMotion = baseMotion.yRot((float) Math.toRadians(spreadDeg * (i % 2 == 0 ? 1 : -1)));
                     clone.setDeltaMovement(offsetMotion);
@@ -621,7 +640,7 @@ public class EnchantmentEventHandler {
         ItemStack output = left.copy();
         output.setDamageValue(0);
         event.setOutput(output);
-        event.setCost(0);
+        event.setXpCost(0);
         event.setMaterialCost(1);
     }
 }
