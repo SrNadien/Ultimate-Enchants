@@ -1,55 +1,209 @@
-# Ultimate Bosses
+# Ultimate Enchants
 
-Addon for **Ultimate Ages** — Minecraft 1.21.1 / NeoForge 21.1.235.
+**Ultimate Enchants** expands Minecraft's enchanting system with a carefully balanced collection of powerful, configurable enchantments designed to enhance combat, exploration, mining, survival, and progression while staying true to the vanilla experience.
 
-## 📦 Build
+Every enchantment is designed to feel like a natural extension of Minecraft, giving players new ways to customize their gear without overwhelming the game's progression.
 
-```
-./gradlew build
-```
-Output jar lands in `build/libs/`. Run `./gradlew runClient` / `runServer` to test locally.
+## Features
 
-Dependencies pulled automatically: GeckoLib 4.4.9 (required), JEI (optional, compile-only for now), Curios (optional, compile-only). Add the GeckoLib/JEI/CurseMaven repos to your own environment if Gradle can't resolve them from this sandbox's restricted network.
+* **30+ unique enchantments** for every major equipment type.
+* Fully configurable through separate **client** and **server** configuration files.
+* Multiplayer-friendly and highly customizable.
+* Optional improvements to several vanilla enchantments.
+* Designed for **NeoForge 1.21.1**.
 
-## ✅ Implemented (Phase 1)
+---
 
-- **Project scaffold**: Gradle/NeoForge 1.21.1 MDK, `neoforge.mods.toml`, config system covering every option requested (damage, health, effects/drops, spawn chances, Blood Moon, equipment bonuses, ritual, commands).
-- **Boss framework** (`entity/boss/AbstractUBBoss`): shared base for all bosses, player-model rendering hook (`UBBossRenderer` + `getSkinLocation()`), GeckoLib animation controllers (idle/walk/attack) wired up for Fresh-Animations-style pose blending.
-- **Shared AI kit** (`entity/boss/ai`): `WardenSonicBoomGoal`, `EvokerFangsAttackGoal`, `IllusionerCloneGoal` — reused by Cult Owner and all 7 community bosses; Cult Lovato uses sonic boom only, per spec.
-- **All named bosses**: Chill, Miguel, Pikachu Empresario, Cult Lovato, Cult Owner, Herobrine (5 variants), and all 7 community bosses (SrNadien, JoanFo, Goten, Troe, Mushashi, ArrivedBog, Matheu) with configurable damage/health/effects/drops/death messages.
-- **Herobrine altar ritual** (`world/HerobrineAltarDetector`): gold-block ring + netherrack + redstone-torch corners + fire, right-click with the configured summon item (default Cursed Diamond) → lightning + random variant spawn. Fully config-gated.
-- **Cult boss natural spawns** (`world/CultIglooSpawnHandler`): igloo detection in Cherry Grove (Cult Lovato) / Swamp (Cult Owner) with configurable roll chance.
-- **Illusioner natural spawns** (`world/IllusionerNaturalSpawnHandler`): configurable chance, any Overworld biome, night-only.
-- **Shulker renewability** (`world/ShulkerRenewalHandler`): Shulker Shell + Endermite → Shulker.
-- **Blood Moon** (`event/BloodMoonHandler`): every N nights (default 5, configurable), +30% (configurable) to health/damage/speed/armor for all hostile mobs, each stat individually toggleable.
-- **Equipment bonuses** (`event/EquipmentBonusHandler`): any Netherite gear → Speed IV + Haste IV; any Stone gear → Slowness IV + Health Boost, both toggleable/tunable, refreshed continuously so they vanish the instant gear is removed.
-- **Commands** (`command/UBossCommand`): `/uboss player tpboss`, `/uboss player tpddim <dimension>`, `/uboss spawn <boss>` (tab-completed ids), permission level configurable (default 4).
-- **Nether-in-Overworld structures**: `data/ultimatebosses/worldgen/structure_set/nether_in_overworld.json` places Fortress/Bastion/Nether Fossil pieces in the Overworld via `random_spread` at a very wide spacing to approximate extreme rarity.
-- **Infected mobs** (`world/InfectedMobsHandler`): minimal version — small chance on natural spawn for Villager/Animal/Wolf/Bat to turn hostile + glow (stand-in for white eyes) — see Phase 2 notes below.
+# Enchantments
 
-## 🚧 Phase 2 (not yet implemented, scaffolding/notes only)
+## Universal
 
-- **Herobrine variant AI depth**: Mage teleport-on-target and Builder structure/sign generation are stubbed; only base goals + one signature move per variant are wired.
-- **Infected mob visuals**: needs a real white-eye overlay render layer per species instead of the glow-tag stand-in; hostile behaviour should be a persistent Goal, not re-rolled on entity join.
-- **Survivor bases + Herobrine-relic trading NPCs**: not started.
-- **JEI category** (bosses/rituals/drops/biomes/structures, Herobrine altar diagram): dependency wired as compile-only; category/recipe classes not written yet.
-- **Auto-generated wiki, CurseForge summary/WYSIWYG description, changelog, install guide, dev guide, "add a new boss" guide, config/command reference**: none generated yet — this README covers install/build/config/commands as an interim reference.
-- **Exact 0.01% Nether-structure-in-Overworld probability**: the current `structure_set` uses spacing/separation (vanilla's only rarity knob for structure sets) rather than a literal runtime percentage; the `netherStructureOverworldChancePercent` config value is reserved for a future code-driven placement pass if exact-percentage behaviour is required.
+### Soulbound
 
-## 🗂️ Skins
+Keeps the enchanted item in the player's inventory after death instead of dropping it.
 
-Drop your `.png` skins into `src/main/resources/skins/` using the exact ids below (placeholders already reserve every slot):
-`chill`, `miguel`, `pikachu_empresario`, `cult_lovato`, `cult_owner`, `herobrine`, `herobrine_warrior`, `herobrine_mage`, `herobrine_builder`, `herobrine_spy`, `herobrine_stalker`, `srnadien`, `joanfo`, `goten`, `troe`, `mushashi`, `arrivedbog`, `matheu`.
+---
 
-## ⚙️ Config
+## Armor
 
-`config/ultimatebosses-common.toml` (generated on first run) — sections: `boss_damage`, `boss_health`, `spawn_chances`, `blood_moon`, `equipment_bonuses`, `rituals`, `commands`, `drops`.
+### Magic Protection
 
-## 🎮 Commands
+Reduces damage taken from magical attacks such as potions, magic projectiles, and other magical sources.
 
-```
-/uboss player tpboss                 # teleport to nearest Ultimate Bosses boss
-/uboss player tpddim <dimension>     # teleport to a dimension
-/uboss spawn <boss>                  # spawn a boss by id (tab-completed)
-```
-Permission level: 4 (configurable via `commands.permissionLevel`).
+---
+
+## Chestplate
+
+### Displacement
+
+Has a chance to randomly teleport nearby attackers away after they hit you.
+
+### Flaming Rebuke
+
+Knocks attackers back while setting them on fire.
+
+### Chilling Rebuke
+
+Knocks attackers back while slowing them and applying Weakness.
+
+### Reach
+
+Increases the distance from which the wearer can interact with blocks and entities.
+
+### Vitality
+
+Increases the wearer's maximum health.
+
+---
+
+## Helmet
+
+### Air Affinity
+
+Removes the mining speed penalty while swimming or not standing on solid ground.
+
+### Gourmand
+
+Makes food restore more hunger and saturation.
+
+### Insight
+
+Increases the amount of experience gained from most sources while wearing the helmet.
+
+---
+
+## Weapons
+
+### Cavalier
+
+Deals increased damage while riding mounts such as horses.
+
+### Ender Disruption
+
+Deals bonus damage to Endermen and other End-type mobs while reducing their ability to teleport.
+
+### Frost Aspect
+
+Applies Slowness and Weakness to enemies with every successful hit.
+
+### Leech
+
+Restores health whenever you kill a hostile or passive mob.
+
+### Instigating
+
+Deals double damage to enemies that are at full health.
+
+### Magic Edge
+
+Converts part of your weapon's damage into magic damage while slightly increasing total damage.
+
+### Outlaw
+
+Deals increased damage to Villagers and Iron Golems.
+
+### Vigilante
+
+Deals increased damage to Illagers and Ravagers.
+
+### Vorpal
+
+Has a chance to perform devastating critical strikes and can occasionally decapitate certain mobs.
+
+---
+
+## Tools
+
+### Excavating
+
+Mines additional blocks around the targeted block, allowing faster excavation of large areas.
+
+---
+
+## Bows
+
+### Hunter's Bounty
+
+Animals killed with the bow have a chance to drop additional loot.
+
+### Quick Draw
+
+Reduces the time required to fully charge a bow.
+
+### Trueshot
+
+Increases arrow velocity, accuracy, and allows arrows to pierce through targets.
+
+### Volley
+
+Fires multiple arrows with each shot while consuming only a single arrow.
+
+---
+
+## Fishing Rods
+
+### Angler's Bounty
+
+Provides a chance to catch additional items while fishing.
+
+### Pilfering
+
+Can steal armor from hooked mobs or players.
+
+---
+
+## Shields
+
+### Bulwark
+
+Prevents the wielder from being knocked back while blocking.
+
+### Phalanx
+
+Allows faster movement while actively using a shield.
+
+---
+
+## Curses
+
+### Curse of Foolishness
+
+Prevents the player from gaining experience while using the cursed item.
+
+### Curse of Mercy
+
+Prevents weapons from dealing the final lethal hit, always leaving targets with at least a small amount of health.
+
+---
+
+# Vanilla Enchantment Overrides
+
+Ultimate Enchants can optionally improve several vanilla enchantments by expanding their compatibility and functionality.
+
+### Expanded Compatibility
+
+Many vanilla enchantments can be applied to additional equipment. For example:
+
+* Protection enchantments can be applied to Horse Armor.
+* Many sword-exclusive enchantments can also be used on Axes.
+
+### Preservation (Optional Mending Replacement)
+
+When enabled, **Mending** is replaced with **Preservation**.
+
+Instead of repairing items automatically with experience, items can be repaired indefinitely in an Anvil without increasing repair costs. This removes the anvil penalty while keeping item maintenance balanced through manual repairs.
+
+### Enhanced Frost Walker
+
+When enabled, **Frost Walker** also functions on Horse Armor.
+
+An optional configuration allows Frost Walker to solidify lava into **Glossed Magma**, allowing both players and horses to safely cross lava lakes.
+
+---
+
+# Configuration
+
+* **Client:** `config/ultimateenchants-client.toml`
+* **Server:** `config/ultimateenchants-server.toml`
+
+Every enchantment and override can be individually configured, making Ultimate Enchants suitable for vanilla-style survival, multiplayer servers, and large modpacks alike.
