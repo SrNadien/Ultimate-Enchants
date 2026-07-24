@@ -1,0 +1,11 @@
+{
+  "description": {"translate": "enchantment.ultimateenchants.unstable"},
+  "supported_items": "#minecraft:enchantable/armor",
+  "weight": 2,
+  "max_level": 3,
+  "min_cost": {"base": 15, "per_level_above_first": 10},
+  "max_cost": {"base": 45, "per_level_above_first": 10},
+  "anvil_cost": 4,
+  "slots": ["head", "chest", "legs", "feet"],
+  "effects": {}
+}
