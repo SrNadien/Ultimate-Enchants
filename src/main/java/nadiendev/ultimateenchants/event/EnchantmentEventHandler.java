@@ -2,13 +2,10 @@ package nadiendev.ultimateenchants.event;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
+import net.minecraft.core.component.DataComponents;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.util.ProblemReporter;
-import net.minecraft.world.level.storage.TagValueInput;
-import net.minecraft.world.level.storage.TagValueOutput;
-import net.minecraft.world.level.storage.ValueInput;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.effect.MobEffectInstance;
@@ -27,8 +24,7 @@ import net.minecraft.world.entity.monster.EnderMan;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.projectile.arrow.AbstractArrow;
 import net.minecraft.world.food.FoodProperties;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
+import net.minecraft.world.item.*;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
@@ -43,15 +39,18 @@ import net.neoforged.neoforge.event.entity.EntityTeleportEvent;
 import net.neoforged.neoforge.event.entity.living.LivingDamageEvent;
 import net.neoforged.neoforge.event.entity.living.LivingDropsEvent;
 import net.neoforged.neoforge.event.entity.living.LivingEntityUseItemEvent;
+import net.neoforged.neoforge.event.entity.living.LivingFallEvent;
 import net.neoforged.neoforge.event.entity.living.LivingIncomingDamageEvent;
 import net.neoforged.neoforge.event.entity.player.ArrowLooseEvent;
 import net.neoforged.neoforge.event.entity.player.ItemFishedEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerXpEvent;
+import net.neoforged.neoforge.event.level.BlockDropsEvent;
 import net.neoforged.neoforge.event.level.block.BreakBlockEvent;
 import net.neoforged.neoforge.event.tick.PlayerTickEvent;
 
 import nadiendev.ultimateenchants.UltimateEnchants;
+import nadiendev.ultimateenchants.config.EnchantsConfig;
 import nadiendev.ultimateenchants.config.ServerConfig;
 import nadiendev.ultimateenchants.util.EnchantUtil;
 
@@ -60,7 +59,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-
 
 public class EnchantmentEventHandler {
 
@@ -72,6 +70,13 @@ public class EnchantmentEventHandler {
     private static final Identifier VITALITY_HEALTH_ID = Identifier.fromNamespaceAndPath(UltimateEnchants.MOD_ID, "vitality_health");
     private static final Identifier BULWARK_KB_ID = Identifier.fromNamespaceAndPath(UltimateEnchants.MOD_ID, "bulwark_knockback");
     private static final Identifier PHALANX_SPEED_ID = Identifier.fromNamespaceAndPath(UltimateEnchants.MOD_ID, "phalanx_speed");
+    private static final Identifier HEALTH_PLUS_ID = Identifier.fromNamespaceAndPath(UltimateEnchants.MOD_ID, "health_plus");
+
+    // --- Nuevos encantamientos: estado auxiliar ---
+    private static final Map<UUID, Long> ANT_REPELLENT_LOCK = new HashMap<>();
+    private static final Map<UUID, Integer> WITHERING_ARROWS = new HashMap<>();
+    private static final int[] HEALTH_PLUS_HEARTS = {0, 2, 3, 4, 5, 6, 7, 8, 9, 10};
+    private static final float[] PULVERIZE_PERCENT = {0f, 0.05f, 0.06f, 0.07f, 0.08f, 0.10f};
 
     // ---------------------------------------------------------------
     // Soulbound
@@ -168,6 +173,17 @@ public class EnchantmentEventHandler {
             victim.addEffect(new MobEffectInstance(MobEffects.WEAKNESS, 60 + frostAspect * 20, 0));
         }
 
+        // Pulverize: exclusivo Maza/Hacha, escala con la armadura total de la victima.
+        // Incompatible con Sharpness y Density (si por algun motivo coexisten, no se aplica).
+        int pulverize = EnchantUtil.level(attacker, weapon, EnchantUtil.PULVERIZE);
+        if (pulverize > 0 && EnchantsConfig.ENABLE_PULVERIZE.get()
+                && (weapon.getItem() instanceof MaceItem || weapon.getItem() instanceof AxeItem)
+                && !weapon.getEnchantments().keySet().stream().anyMatch(h -> h.is(net.minecraft.world.item.enchantment.Enchantments.SHARPNESS))) {
+            int lvl = Math.min(pulverize, PULVERIZE_PERCENT.length - 1);
+            float armorValue = (float) victim.getAttributeValue(Attributes.ARMOR);
+            bonus += amount * PULVERIZE_PERCENT[lvl] * armorValue;
+        }
+
         int vorpal = EnchantUtil.level(attacker, weapon, EnchantUtil.VORPAL);
         if (vorpal > 0 && victim.level().getRandom().nextFloat() < 0.08f) {
             bonus += Math.max(amount * 3f, victim.getMaxHealth());
@@ -190,6 +206,14 @@ public class EnchantmentEventHandler {
         if (victim.level().isClientSide()) return;
 
         Entity attackerEntity = event.getSource().getEntity();
+
+        // Withering: la flecha marcada aplica Wither al impactar
+        if (EnchantsConfig.ENABLE_WITHERING.get() && event.getSource().getDirectEntity() instanceof AbstractArrow arrow) {
+            Integer withering = WITHERING_ARROWS.remove(arrow.getUUID());
+            if (withering != null && withering > 0) {
+                victim.addEffect(new MobEffectInstance(MobEffects.WITHER, 40 + withering * 40, 0));
+            }
+        }
 
         // Rebukes / Displacement: victim wears the chestplate, attacker gets punished
         if (attackerEntity instanceof LivingEntity attacker) {
@@ -227,7 +251,68 @@ public class EnchantmentEventHandler {
                     attacker.heal(heal);
                 }
             }
+
+            // Robo de Vida (Life Steal): 50% del daño infligido vuelve como vida
+            if (EnchantsConfig.ENABLE_LIFE_STEAL.get() && EnchantUtil.has(attacker, weapon, EnchantUtil.LIFE_STEAL)) {
+                float heal = event.getInflictedDamage() * 0.5f;
+                if (heal > 0) {
+                    attacker.heal(heal);
+                }
+            }
+
+            // Decay: arma cuerpo a cuerpo aplica Wither
+            int decay = EnchantUtil.level(attacker, weapon, EnchantUtil.DECAY);
+            if (decay > 0 && EnchantsConfig.ENABLE_DECAY.get()) {
+                victim.addEffect(new MobEffectInstance(MobEffects.WITHER, 40 + decay * 40, 0));
+            }
+
+            // Repelente de Hormigas: la victima (con armadura) empuja fuerte al atacante cuerpo a cuerpo
+            if (EnchantsConfig.ENABLE_ANT_REPELLENT.get() && event.getSource().isDirect()) {
+                boolean hasAntRepellent = false;
+                for (EquipmentSlot slot : new EquipmentSlot[]{EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET}) {
+                    if (EnchantUtil.has(victim, victim.getItemBySlot(slot), EnchantUtil.ANT_REPELLENT)) {
+                        hasAntRepellent = true;
+                        break;
+                    }
+                }
+                if (hasAntRepellent) {
+                    long now = victim.level().getGameTime();
+                    Long until = ANT_REPELLENT_LOCK.get(victim.getUUID());
+                    if (until == null || now >= until) {
+                        Vec3 dir = attacker.position().subtract(victim.position());
+                        if (dir.lengthSqr() < 1.0E-4) {
+                            dir = new Vec3(victim.level().getRandom().nextDouble() - 0.5, 0, victim.level().getRandom().nextDouble() - 0.5);
+                        }
+                        dir = dir.normalize();
+                        double distance = 20.0;
+                        attacker.teleportTo(attacker.getX() + dir.x * distance, attacker.getY(), attacker.getZ() + dir.z * distance);
+                        ANT_REPELLENT_LOCK.put(victim.getUUID(), now + 40L); // 2s de cooldown
+                    }
+                }
+            }
+
+            // Flim Flam: compara el total de niveles entre atacante y victima; el menor pierde suerte
+            if (EnchantsConfig.ENABLE_FLIM_FLAM.get()) {
+                int attackerTotal = totalFlimFlam(attacker);
+                int victimTotal = totalFlimFlam(victim);
+                if (attackerTotal != victimTotal) {
+                    LivingEntity loser = attackerTotal < victimTotal ? attacker : victim;
+                    int diff = Math.abs(attackerTotal - victimTotal);
+                    if (victim.level().getRandom().nextFloat() < Math.min(0.75f, 0.15f * diff)) {
+                        loser.addEffect(new MobEffectInstance(MobEffects.UNLUCK, 600, 0));
+                    }
+                }
+            }
         }
+    }
+
+    private int totalFlimFlam(LivingEntity entity) {
+        int total = 0;
+        for (EquipmentSlot slot : new EquipmentSlot[]{EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET}) {
+            total += EnchantUtil.level(entity, entity.getItemBySlot(slot), EnchantUtil.FLIM_FLAM);
+        }
+        total += EnchantUtil.level(entity, entity.getMainHandItem(), EnchantUtil.FLIM_FLAM);
+        return total;
     }
 
     // ---------------------------------------------------------------
@@ -270,7 +355,7 @@ public class EnchantmentEventHandler {
         if (player.level().isClientSide()) return;
 
         ItemStack item = event.getItem();
-        FoodProperties food = item.get(net.minecraft.core.component.DataComponents.FOOD);
+        FoodProperties food = item.get(DataComponents.FOOD);
         if (food == null) return;
 
         ItemStack helmet = player.getItemBySlot(EquipmentSlot.HEAD);
@@ -328,6 +413,29 @@ public class EnchantmentEventHandler {
             event.addModifier(Attributes.EXPLOSION_KNOCKBACK_RESISTANCE, new AttributeModifier(BULWARK_KB_ID, 1.0, AttributeModifier.Operation.ADD_VALUE), EquipmentSlotGroup.MAINHAND);
             event.addModifier(Attributes.EXPLOSION_KNOCKBACK_RESISTANCE, new AttributeModifier(BULWARK_KB_ID, 1.0, AttributeModifier.Operation.ADD_VALUE), EquipmentSlotGroup.OFFHAND);
         }
+
+        // Vida+ (Health+): puede ir en cualquier pieza de armadura, cada pieza
+        // suma su propio bono (no se comparten IDs entre slots -> se acumulan).
+        int healthPlus = rawLevel(stack, EnchantUtil.HEALTH_PLUS);
+        var equippable = stack.get(DataComponents.EQUIPPABLE);
+        if (healthPlus > 0 && EnchantsConfig.ENABLE_HEALTH_PLUS.get() && equippable != null) {
+            int lvl = Math.min(healthPlus, HEALTH_PLUS_HEARTS.length - 1);
+            double extraHealth = HEALTH_PLUS_HEARTS[lvl] * 2.0; // corazones -> puntos de vida
+            EquipmentSlotGroup slotGroup = slotGroupFor(equippable.slot());
+            if (slotGroup != null) {
+                event.addModifier(Attributes.MAX_HEALTH, new AttributeModifier(HEALTH_PLUS_ID, extraHealth, AttributeModifier.Operation.ADD_VALUE), slotGroup);
+            }
+        }
+    }
+
+    private EquipmentSlotGroup slotGroupFor(EquipmentSlot slot) {
+        return switch (slot) {
+            case HEAD -> EquipmentSlotGroup.HEAD;
+            case CHEST -> EquipmentSlotGroup.CHEST;
+            case LEGS -> EquipmentSlotGroup.LEGS;
+            case FEET -> EquipmentSlotGroup.FEET;
+            default -> null;
+        };
     }
 
     private int rawLevel(ItemStack stack, net.minecraft.resources.ResourceKey<net.minecraft.world.item.enchantment.Enchantment> key) {
@@ -370,6 +478,77 @@ public class EnchantmentEventHandler {
                 freezeLavaAround(player, frostWalkerLevel);
             }
         }
+
+        if (EnchantsConfig.ENABLE_LET_THERE_BE_LIGHT.get() && player.level().getGameTime() % 20 == 0
+                && player.getDeltaMovement().horizontalDistanceSqr() > 1.0E-4 && player.onGround()) {
+            ItemStack boots = player.getItemBySlot(EquipmentSlot.FEET);
+            if (EnchantUtil.has(player, boots, EnchantUtil.LET_THERE_BE_LIGHT) && player.level() instanceof ServerLevel serverLevel) {
+                BlockPos feet = player.blockPosition();
+                int torchSlot = findTorchSlot(player);
+                if (torchSlot >= 0) {
+                    BlockPos placePos = findTorchSpot(serverLevel, feet);
+                    if (placePos != null) {
+                        serverLevel.setBlockAndUpdate(placePos, Blocks.TORCH.defaultBlockState());
+                        player.getInventory().getItem(torchSlot).shrink(1);
+                    }
+                }
+            }
+        }
+
+        // Unbreakable Plus y Shimmer: se re-aplican al equipo si el componente
+        // no esta seteado todavia (no hay evento vanilla para "prevenir daño de durabilidad",
+        // asi que se fuerza el componente de item que vanilla ya usa para esto).
+        if (EnchantsConfig.ENABLE_UNBREAKABLE_PLUS.get() || EnchantsConfig.ENABLE_SHIMMER.get()) {
+            for (ItemStack stack : new ItemStack[]{
+                    player.getMainHandItem(), player.getOffhandItem(),
+                    player.getItemBySlot(EquipmentSlot.HEAD), player.getItemBySlot(EquipmentSlot.CHEST),
+                    player.getItemBySlot(EquipmentSlot.LEGS), player.getItemBySlot(EquipmentSlot.FEET)}) {
+                if (stack.isEmpty()) continue;
+
+                if (EnchantsConfig.ENABLE_UNBREAKABLE_PLUS.get() && EnchantUtil.has(player, stack, EnchantUtil.UNBREAKABLE_PLUS)
+                        && stack.get(DataComponents.UNBREAKABLE) == null) {
+                    stack.set(DataComponents.UNBREAKABLE, net.minecraft.util.Unit.INSTANCE);
+                }
+
+                if (EnchantsConfig.ENABLE_SHIMMER.get() && EnchantUtil.has(player, stack, EnchantUtil.SHIMMER)
+                        && stack.get(DataComponents.ENCHANTMENT_GLINT_OVERRIDE) == null) {
+                    stack.set(DataComponents.ENCHANTMENT_GLINT_OVERRIDE, true);
+                }
+            }
+        }
+
+        // Soaring: exclusivo para Elytra, acelera durante el descenso (dive)
+        if (EnchantsConfig.ENABLE_SOARING.get() && player.isFallFlying()) {
+            ItemStack chest = player.getItemBySlot(EquipmentSlot.CHEST);
+            int soaring = EnchantUtil.level(player, chest, EnchantUtil.SOARING);
+            if (soaring > 0 && player.getDeltaMovement().y < -0.15) {
+                Vec3 look = player.getLookAngle().normalize();
+                Vec3 motion = player.getDeltaMovement();
+                Vec3 boosted = motion.add(look.x * 0.03 * soaring, 0, look.z * 0.03 * soaring);
+                player.setDeltaMovement(boosted);
+            }
+        }
+
+
+    }
+
+    private int findTorchSlot(Player player) {
+        for (int i = 0; i < player.getInventory().getContainerSize(); i++) {
+            if (player.getInventory().getItem(i).is(Items.TORCH)) return i;
+        }
+        return -1;
+    }
+
+    private BlockPos findTorchSpot(ServerLevel level, BlockPos feet) {
+        BlockState torchState = Blocks.TORCH.defaultBlockState();
+        BlockPos[] candidates = {feet, feet.north(), feet.south(), feet.east(), feet.west()};
+        for (BlockPos candidate : candidates) {
+            BlockState existing = level.getBlockState(candidate);
+            if ((existing.isAir() || existing.canBeReplaced()) && torchState.canSurvive(level, candidate)) {
+                return candidate;
+            }
+        }
+        return null;
     }
 
     // ---------------------------------------------------------------
@@ -473,6 +652,31 @@ public class EnchantmentEventHandler {
         LivingEntity victim = event.getEntity();
         if (victim.level().isClientSide()) return;
 
+        // Last Stand: si el golpe mataria al jugador, sobrevive con 1 HP pagando experiencia
+        if (EnchantsConfig.ENABLE_LAST_STAND.get() && victim instanceof Player player
+                && event.getNewDamage() >= victim.getHealth() && victim.getHealth() > 0f) {
+            int lastStandTotal = 0;
+            int piecesWorn = 0;
+            for (EquipmentSlot slot : new EquipmentSlot[]{EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET}) {
+                int lvl = EnchantUtil.level(player, player.getItemBySlot(slot), EnchantUtil.LAST_STAND);
+                if (lvl > 0) {
+                    lastStandTotal = Math.max(lastStandTotal, lvl);
+                    piecesWorn++;
+                }
+            }
+            if (lastStandTotal > 0) {
+                float damagePrevented = event.getNewDamage() - (victim.getHealth() - 1.0f);
+                int baseCost = Math.round(damagePrevented * 3.0f);
+                int reduction = Math.min(piecesWorn * 15, 60); // % de descuento por pieza equipada
+                int cost = Math.max(1, baseCost - (baseCost * reduction / 100));
+                if (player.totalExperience >= cost) {
+                    player.giveExperiencePoints(-cost);
+                    event.setNewDamage(Math.max(0f, victim.getHealth() - 1.0f));
+                    return;
+                }
+            }
+        }
+
         Entity attackerEntity = event.getSource().getEntity();
         if (!(attackerEntity instanceof LivingEntity attacker)) return;
 
@@ -510,6 +714,46 @@ public class EnchantmentEventHandler {
             if (!tool.isCorrectToolForDrops(state)) continue;
             serverLevel.destroyBlock(pos.immutable(), true, player);
         }
+    }
+
+    // ---------------------------------------------------------------
+    // Telekinesis (bloques): los drops van directo al inventario si hay
+    // espacio; si no, caen normalmente. Al actuar sobre la lista de drops
+    // ya calculada, es compatible de forma natural con Fortuna y Toque de Seda.
+    // ---------------------------------------------------------------
+    @SubscribeEvent
+    public void onBlockDrops(BlockDropsEvent event) {
+        if (!EnchantsConfig.ENABLE_TELEKINESIS.get()) return;
+        if (!(event.getBreaker() instanceof Player player) || player.level().isClientSide()) return;
+
+        ItemStack tool = player.getMainHandItem();
+        if (!EnchantUtil.has(player, tool, EnchantUtil.TELEKINESIS)) return;
+
+        event.getDrops().removeIf(itemEntity -> {
+            ItemStack stack = itemEntity.getItem();
+            if (player.getInventory().add(stack)) {
+                return true;
+            }
+            return false;
+        });
+    }
+
+    // ---------------------------------------------------------------
+    // Telekinesis (mobs): mismo comportamiento para el botin de criaturas.
+    // Compatible con Looting porque tambien actua sobre la lista ya calculada.
+    // ---------------------------------------------------------------
+    @SubscribeEvent
+    public void onTelekinesisMobDrops(LivingDropsEvent event) {
+        if (!EnchantsConfig.ENABLE_TELEKINESIS.get()) return;
+        if (event.getEntity().level().isClientSide()) return;
+
+        Entity killerEntity = event.getSource().getEntity();
+        if (!(killerEntity instanceof Player player)) return;
+
+        ItemStack weapon = player.getMainHandItem();
+        if (!EnchantUtil.has(player, weapon, EnchantUtil.TELEKINESIS)) return;
+
+        event.getDrops().removeIf(itemEntity -> player.getInventory().add(itemEntity.getItem()));
     }
 
     // ---------------------------------------------------------------
@@ -583,6 +827,16 @@ public class EnchantmentEventHandler {
             arrow.setDeltaMovement(look.scale(speed));
         }
 
+        // Withering: exclusivo para arcos, la flecha aplica Wither al impactar.
+        // Se guarda el nivel en el UUID de la flecha porque LivingDamageEvent solo
+        // conoce la entidad que dispara, no el itemstack del arco original.
+        if (EnchantsConfig.ENABLE_WITHERING.get()) {
+            int withering = EnchantUtil.level(shooter, bow, EnchantUtil.WITHERING);
+            if (withering > 0) {
+                WITHERING_ARROWS.put(arrow.getUUID(), withering);
+            }
+        }
+
         int volley = EnchantUtil.level(shooter, bow, EnchantUtil.VOLLEY);
         if (volley > 0 && event.getLevel() instanceof ServerLevel serverLevel) {
             spawningVolleyArrow = true;
@@ -591,21 +845,11 @@ public class EnchantmentEventHandler {
                     double spreadDeg = 3.0 * i;
                     AbstractArrow clone = (AbstractArrow) arrow.getType().create(serverLevel, net.minecraft.world.entity.EntitySpawnReason.TRIGGERED);
                     if (clone == null) continue;
-                    // A partir de NeoForge 26.1, Entity#saveWithoutId y Entity#load
-                    // operan sobre ValueOutput/ValueInput en lugar de CompoundTag directo.
-                    TagValueOutput arrowOutput = TagValueOutput.createWithContext(
-                            ProblemReporter.DISCARDING,
-                            serverLevel.registryAccess()
-                    );
-                    arrow.saveWithoutId(arrowOutput);
-                    net.minecraft.nbt.CompoundTag arrowData = arrowOutput.buildResult();
-
-                    ValueInput arrowInput = TagValueInput.create(
-                            ProblemReporter.DISCARDING,
-                            serverLevel.registryAccess(),
-                            arrowData
-                    );
-                    clone.load(arrowInput);
+                    var arrowData = net.minecraft.world.level.storage.TagValueOutput.createWithContext(
+                            net.minecraft.util.ProblemReporter.DISCARDING, arrow.registryAccess());
+                    arrow.saveWithoutId(arrowData);
+                    clone.load(net.minecraft.world.level.storage.TagValueInput.create(
+                            net.minecraft.util.ProblemReporter.DISCARDING, arrow.registryAccess(), arrowData.buildResult()));
                     clone.snapTo(arrow.getX(), arrow.getY(), arrow.getZ(), arrow.getYRot(), arrow.getXRot());
                     clone.setOwner(shooter);
                     Vec3 baseMotion = arrow.getDeltaMovement();
@@ -617,6 +861,109 @@ public class EnchantmentEventHandler {
                 spawningVolleyArrow = false;
             }
         }
+    }
+
+    // ---------------------------------------------------------------
+    // Unstable (botas): cancela el daño de caída y crea una explosión que
+    // impulsa al jugador hacia arriba. Agacharse evita la activación.
+    // ---------------------------------------------------------------
+    @SubscribeEvent
+    public void onUnstableFall(LivingFallEvent event) {
+        if (!EnchantsConfig.ENABLE_UNSTABLE.get()) return;
+        if (!(event.getEntity() instanceof Player player) || player.level().isClientSide()) return;
+        if (player.isShiftKeyDown()) return;
+        if (event.getDistance() < 4.0f) return;
+
+        ItemStack boots = player.getItemBySlot(EquipmentSlot.FEET);
+        int unstable = EnchantUtil.level(player, boots, EnchantUtil.UNSTABLE);
+        if (unstable <= 0) return;
+
+        int gunpowderCost = unstableGunpowderCost(unstable);
+        if (!consumeGunpowder(player, gunpowderCost)) return;
+
+        event.setCanceled(true);
+        if (player.level() instanceof ServerLevel serverLevel) {
+            boolean breaksBlocks = unstable >= 3;
+            serverLevel.explode(player, player.getX(), player.getY(), player.getZ(), unstableExplosionPower(unstable),
+                    false, breaksBlocks ? Level.ExplosionInteraction.BLOCK : Level.ExplosionInteraction.NONE);
+        }
+        player.setDeltaMovement(player.getDeltaMovement().x, 0.9 + 0.2 * unstable, player.getDeltaMovement().z);
+        player.hurtMarked = true;
+    }
+
+    // ---------------------------------------------------------------
+    // Unstable (casco/pechera/pantalones): al recibir daño de jugadores,
+    // mobs o flechas, genera una explosión alrededor del jugador.
+    // ---------------------------------------------------------------
+    @SubscribeEvent
+    public void onUnstableHit(LivingDamageEvent.Post event) {
+        if (!EnchantsConfig.ENABLE_UNSTABLE.get()) return;
+        if (!(event.getEntity() instanceof Player player) || player.level().isClientSide()) return;
+
+        Entity sourceEntity = event.getSource().getDirectEntity();
+        boolean validSource = sourceEntity instanceof LivingEntity || sourceEntity instanceof AbstractArrow;
+        if (!validSource) return;
+
+        int best = 0;
+        EquipmentSlot bestSlot = null;
+        for (EquipmentSlot slot : new EquipmentSlot[]{EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS}) {
+            int lvl = EnchantUtil.level(player, player.getItemBySlot(slot), EnchantUtil.UNSTABLE);
+            if (lvl > best) {
+                best = lvl;
+                bestSlot = slot;
+            }
+        }
+        if (best <= 0 || bestSlot == null) return;
+
+        int gunpowderCost = unstableGunpowderCost(best);
+        if (!consumeGunpowder(player, gunpowderCost)) return;
+
+        if (player.level() instanceof ServerLevel serverLevel) {
+            ItemStack armorPiece = player.getItemBySlot(bestSlot);
+            EquipmentSlot brokenSlot = bestSlot;
+            armorPiece.hurtAndBreak(gunpowderCost, serverLevel, player, brokenItem -> player.onEquippedItemBroken(brokenItem, brokenSlot));
+
+            boolean breaksBlocks = best >= 3;
+            serverLevel.explode(player, player.getX(), player.getY(), player.getZ(), unstableExplosionPower(best),
+                    false, breaksBlocks ? Level.ExplosionInteraction.BLOCK : Level.ExplosionInteraction.NONE);
+        }
+    }
+
+    private int unstableGunpowderCost(int level) {
+        return switch (level) {
+            case 1 -> 1;
+            case 2 -> 2;
+            default -> 4;
+        };
+    }
+
+    private float unstableExplosionPower(int level) {
+        return switch (level) {
+            case 1 -> 1.2f;
+            case 2 -> 2.2f;
+            default -> 3.5f;
+        };
+    }
+
+    private boolean consumeGunpowder(Player player, int amount) {
+        int found = 0;
+        for (int i = 0; i < player.getInventory().getContainerSize(); i++) {
+            if (player.getInventory().getItem(i).is(Items.GUNPOWDER)) {
+                found += player.getInventory().getItem(i).getCount();
+            }
+        }
+        if (found < amount) return false;
+
+        int remaining = amount;
+        for (int i = 0; i < player.getInventory().getContainerSize() && remaining > 0; i++) {
+            ItemStack stack = player.getInventory().getItem(i);
+            if (stack.is(Items.GUNPOWDER)) {
+                int taken = Math.min(remaining, stack.getCount());
+                stack.shrink(taken);
+                remaining -= taken;
+            }
+        }
+        return true;
     }
 
     // ---------------------------------------------------------------
